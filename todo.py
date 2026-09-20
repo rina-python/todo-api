@@ -6,6 +6,8 @@ from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignK
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from auth import hash_password, verify_password, create_access_token, decode_token
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey
+from sqlalchemy.orm import relationship  # ← НОВЫЙ импорт
 
 # --- База данных ---
 engine = create_engine('sqlite:///todo.db', connect_args={'check_same_thread': False})
@@ -18,6 +20,21 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    
+    # Связи:
+    tasks = relationship("Task", back_populates="owner", cascade="all, delete-orphan")
+    categories = relationship("Category", back_populates="owner", cascade="all, delete-orphan")
+
+# --- Модель: Категория ---
+class Category(Base):
+    __tablename__ = "categories"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"))  # ← кто владелец
+    
+    # Связи:
+    owner = relationship("User", back_populates="categories")
+    tasks = relationship("Task", back_populates="category", cascade="all, delete-orphan")
 
 # --- Модель: Задача ---
 class Task(Base):
@@ -26,7 +43,12 @@ class Task(Base):
     title = Column(String, nullable=False)
     description = Column(String, default="")
     done = Column(Boolean, default=False)
-    owner_id = Column(Integer, ForeignKey("users.id"))  # ← кто владелец
+    owner_id = Column(Integer, ForeignKey("users.id"))          # ← владелец
+    category_id = Column(Integer, ForeignKey("categories.id"))  # ← категория
+    
+    # Связи:
+    owner = relationship("User", back_populates="tasks")
+    category = relationship("Category", back_populates="tasks")
 
 Base.metadata.create_all(bind=engine)
 
@@ -42,12 +64,19 @@ class UserLogin(BaseModel):
 class TaskCreate(BaseModel):
     title: str
     description: str = ""
+    category_id: int = None  # ← НОВОЕ поле (необязательное)
+
 
 class TaskUpdate(BaseModel):
     title: str = None
     description: str = None
     done: bool = None
+    category_id: int = None  # ← НОВОЕ поле
+class CategoryCreate(BaseModel):
+    name: str
 
+class CategoryUpdate(BaseModel):
+    name: str = None
 # --- Приложение ---
 app = FastAPI(title="TODO API with Auth")
 
@@ -120,6 +149,47 @@ def login(user_data: UserLogin):
     finally:
         db.close()
 
+
+@app.post("/categories")
+def create_category(category: CategoryCreate, current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    try:
+        new_cat = Category(name=category.name, owner_id=current_user.id)
+        db.add(new_cat)
+        db.commit()
+        db.refresh(new_cat)
+        return {"id": new_cat.id, "name": new_cat.name}
+    finally:
+        db.close()
+
+@app.get("/categories")
+def get_categories(current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    try:
+        cats = db.query(Category).filter(Category.owner_id == current_user.id).all()
+        return {"categories": [{"id": c.id, "name": c.name} for c in cats]}
+    finally:
+        db.close()
+
+@app.get("/categories/{category_id}/tasks")
+def get_category_tasks(category_id: int, current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    try:
+        # Проверяем, что категория принадлежит пользователю
+        category = db.query(Category).filter(
+            Category.id == category_id,
+            Category.owner_id == current_user.id
+        ).first()
+        if not category:
+            raise HTTPException(status_code=404, detail="Категория не найдена")
+        
+        tasks = db.query(Task).filter(Task.category_id == category_id).all()
+        return {
+            "category": category.name,
+            "tasks": [{"id": t.id, "title": t.title, "done": t.done} for t in tasks]
+        }
+    finally:
+        db.close()
 # --- Эндпоинты: Задачи (только для авторизованных) ---
 
 @app.get("/")
@@ -131,9 +201,18 @@ def get_tasks(current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
         tasks = db.query(Task).filter(Task.owner_id == current_user.id).all()
-        return {"tasks": [{"id": t.id, "title": t.title, "description": t.description, "done": t.done} for t in tasks]}
+        return {"tasks": [
+            {
+                "id": t.id,
+                "title": t.title,
+                "description": t.description,
+                "done": t.done,
+                "category_id": t.category_id  # ← НОВОЕ
+            } for t in tasks
+        ]}
     finally:
         db.close()
+
 
 @app.post("/tasks")
 def create_task(task: TaskCreate, current_user: User = Depends(get_current_user)):
@@ -142,12 +221,18 @@ def create_task(task: TaskCreate, current_user: User = Depends(get_current_user)
         new_task = Task(
             title=task.title,
             description=task.description,
-            owner_id=current_user.id  # ← привязываем к пользователю
+            owner_id=current_user.id,
+            category_id=task.category_id  # ← НОВОЕ
         )
         db.add(new_task)
         db.commit()
         db.refresh(new_task)
-        return {"id": new_task.id, "title": new_task.title, "done": new_task.done}
+        return {
+            "id": new_task.id,
+            "title": new_task.title,
+            "done": new_task.done,
+            "category_id": new_task.category_id
+        }
     finally:
         db.close()
 
@@ -164,8 +249,10 @@ def update_task(task_id: int, task: TaskUpdate, current_user: User = Depends(get
             db_task.description = task.description
         if task.done is not None:
             db_task.done = task.done
+        if task.category_id is not None:       # ← НОВОЕ
+            db_task.category_id = task.category_id
         db.commit()
-        return {"id": db_task.id, "title": db_task.title, "done": db_task.done}
+        return {"id": db_task.id, "title": db_task.title, "done": db_task.done, "category_id": db_task.category_id}
     finally:
         db.close()
 
