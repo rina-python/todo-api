@@ -7,67 +7,98 @@
         * { box-sizing: border-box; }
         body {
             font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 50px auto;
+            max-width: 700px;
+            margin: 30px auto;
             padding: 20px;
             background: #f0f2f5;
         }
-        h1 { color: #333; }
+        h1 { color: #333; margin: 0; }
+        h3 { color: #555; margin: 10px 0; }
         .card {
             background: white;
-            padding: 25px;
+            padding: 20px;
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
-        input {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 10px;
+        input, select {
+            padding: 10px;
             border: 1px solid #ccc;
             border-radius: 5px;
-            font-size: 16px;
+            font-size: 15px;
+            font-family: inherit;
         }
+        input { width: 100%; margin-bottom: 10px; }
         button {
-            padding: 12px 20px;
+            padding: 10px 16px;
             background: #4CAF50;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 15px;
             margin-right: 5px;
         }
         button:hover { background: #45a049; }
         button.secondary { background: #2196F3; }
         button.secondary:hover { background: #1976D2; }
-        button.danger { background: #f44336; padding: 5px 10px; font-size: 14px; }
+        button.danger { background: #f44336; padding: 5px 10px; font-size: 13px; }
         button.danger:hover { background: #d32f2f; }
-        button.done-btn { background: #2196F3; padding: 5px 10px; font-size: 14px; }
+        button.done-btn { background: #2196F3; padding: 5px 10px; font-size: 13px; }
         button.done-btn:hover { background: #1976D2; }
+        button.small { padding: 5px 10px; font-size: 13px; }
+        button.active { background: #ff9800; }
+        button.active:hover { background: #f57c00; }
+
         .task {
             background: white;
-            padding: 15px;
-            margin-bottom: 10px;
+            padding: 12px 15px;
+            margin-bottom: 8px;
             border-radius: 5px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         .task.done { text-decoration: line-through; opacity: 0.6; }
+        .task-category {
+            font-size: 12px;
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: 8px;
+        }
         .hidden { display: none; }
         .error { color: red; margin-top: 10px; }
-        .success { color: green; margin-top: 10px; }
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
-        .user-info { font-size: 14px; color: #666; }
-        .input-group { display: flex; gap: 10px; }
-        .input-group input { margin-bottom: 0; }
+        .user-info { font-size: 14px; color: #666; margin-right: 10px; }
+        .input-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        .input-group input { margin-bottom: 0; flex: 1; min-width: 200px; }
+        .input-group select { margin-bottom: 0; }
+        .categories-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+        .category-chip {
+            background: #e0e0e0;
+            padding: 6px 12px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .category-chip.active { background: #ff9800; color: white; }
+        .category-chip .del {
+            color: #c62828;
+            font-weight: bold;
+            margin-left: 5px;
+        }
+        .category-chip.active .del { color: white; }
     </style>
 </head>
 <body>
@@ -75,7 +106,7 @@
     <!-- ЭКРАН 1: Вход / Регистрация -->
     <div id="authScreen" class="card">
         <h1>📋 Мой TODO-лист</h1>
-        <h3 id="authTitle">Вход</h3>
+        <h3>Вход</h3>
         
         <input type="email" id="emailInput" placeholder="Email">
         <input type="password" id="passwordInput" placeholder="Пароль">
@@ -96,50 +127,58 @@
             </div>
         </div>
 
+        <!-- Категории -->
         <div class="card">
+            <h3>Категории</h3>
+            <div class="input-group" style="margin-bottom: 10px;">
+                <input type="text" id="categoryInput" placeholder="Новая категория">
+                <button onclick="addCategory()">Добавить</button>
+            </div>
+            <div class="categories-bar" id="categoriesBar">
+                <span class="category-chip active" data-id="all" onclick="filterByCategory('all')">Все задачи</span>
+            </div>
+        </div>
+
+        <!-- Новая задача -->
+        <div class="card">
+            <h3>Новая задача</h3>
             <div class="input-group">
                 <input type="text" id="taskInput" placeholder="Что нужно сделать?">
+                <select id="taskCategory">
+                    <option value="">Без категории</option>
+                </select>
                 <button onclick="addTask()">Добавить</button>
             </div>
         </div>
 
+        <!-- Список задач -->
         <div id="tasks"></div>
     </div>
-
     <script>
         const API = "http://127.0.0.1:8000";
+        let currentFilter = "all";  // какой фильтр сейчас выбран
+        let allCategories = [];      // все категории пользователя
+        let allTasks = [];           // все задачи пользователя
 
         // ===== РАБОТА С ТОКЕНОМ =====
-        function getToken() {
-            return localStorage.getItem("token");
-        }
-
-        function setToken(token) {
-            localStorage.setItem("token", token);
-        }
-
+        function getToken() { return localStorage.getItem("token"); }
+        function setToken(token) { localStorage.setItem("token", token); }
         function clearToken() {
             localStorage.removeItem("token");
             localStorage.removeItem("email");
         }
 
-        // ===== ФУНКЦИЯ ЗАПРОСА С ТОКЕНОМ =====
+        // ===== ЗАПРОС С ТОКЕНОМ =====
         async function apiRequest(url, options = {}) {
             const token = getToken();
             if (token) {
-                options.headers = {
-                    ...options.headers,
-                    "Authorization": "Bearer " + token
-                };
+                options.headers = { ...options.headers, "Authorization": "Bearer " + token };
             }
-            
             const response = await fetch(API + url, options);
-            
             if (response.status === 401) {
                 logout();
-                throw new Error("Сессия истекла. Войдите заново.");
+                throw new Error("Сессия истекла");
             }
-            
             return response.json();
         }
 
@@ -149,11 +188,7 @@
             const password = document.getElementById("passwordInput").value;
             const errorEl = document.getElementById("authError");
             errorEl.textContent = "";
-
-            if (!email || !password) {
-                errorEl.textContent = "Введите email и пароль";
-                return;
-            }
+            if (!email || !password) { errorEl.textContent = "Введите email и пароль"; return; }
 
             try {
                 const response = await fetch(API + "/login", {
@@ -161,21 +196,13 @@
                     headers: {"Content-Type": "application/json"},
                     body: JSON.stringify({email, password})
                 });
-
                 const data = await response.json();
-
-                if (!response.ok) {
-                    errorEl.textContent = data.detail || "Ошибка входа";
-                    return;
-                }
-
+                if (!response.ok) { errorEl.textContent = data.detail || "Ошибка входа"; return; }
                 setToken(data.access_token);
                 localStorage.setItem("email", email);
                 showTasksScreen();
-                loadTasks();
-            } catch (e) {
-                errorEl.textContent = "Сервер недоступен: " + e.message;
-            }
+                await loadAll();
+            } catch (e) { errorEl.textContent = "Сервер недоступен: " + e.message; }
         }
 
         async function register() {
@@ -183,16 +210,8 @@
             const password = document.getElementById("passwordInput").value;
             const errorEl = document.getElementById("authError");
             errorEl.textContent = "";
-
-            if (!email || !password) {
-                errorEl.textContent = "Введите email и пароль";
-                return;
-            }
-
-            if (password.length < 6) {
-                errorEl.textContent = "Пароль должен быть минимум 6 символов";
-                return;
-            }
+            if (!email || !password) { errorEl.textContent = "Введите email и пароль"; return; }
+            if (password.length < 6) { errorEl.textContent = "Пароль минимум 6 символов"; return; }
 
             try {
                 const response = await fetch(API + "/register", {
@@ -200,19 +219,10 @@
                     headers: {"Content-Type": "application/json"},
                     body: JSON.stringify({email, password})
                 });
-
                 const data = await response.json();
-
-                if (!response.ok) {
-                    errorEl.textContent = data.detail || "Ошибка регистрации";
-                    return;
-                }
-
-                // После регистрации — сразу логинимся
+                if (!response.ok) { errorEl.textContent = data.detail || "Ошибка регистрации"; return; }
                 login();
-            } catch (e) {
-                errorEl.textContent = "Сервер недоступен: " + e.message;
-            }
+            } catch (e) { errorEl.textContent = "Сервер недоступен: " + e.message; }
         }
 
         function logout() {
@@ -224,57 +234,133 @@
             document.getElementById("authError").textContent = "";
         }
 
-        // ===== ЭКРАНЫ =====
         function showTasksScreen() {
             document.getElementById("authScreen").classList.add("hidden");
             document.getElementById("tasksScreen").classList.remove("hidden");
             document.getElementById("userEmail").textContent = localStorage.getItem("email") || "";
         }
 
+        // ===== ЗАГРУЗКА ВСЕГО =====
+        async function loadAll() {
+            await loadCategories();
+            await loadTasks();
+        }
+
+        // ===== КАТЕГОРИИ =====
+        async function loadCategories() {
+            const data = await apiRequest("/categories");
+            allCategories = data.categories;
+            renderCategoriesBar();
+            renderCategorySelect();
+        }
+
+        function renderCategoriesBar() {
+            const bar = document.getElementById("categoriesBar");
+            bar.innerHTML = '<span class="category-chip active" data-id="all" onclick="filterByCategory(\'all\')">Все задачи</span>';
+            
+            allCategories.forEach(cat => {
+                const chip = document.createElement("span");
+                chip.className = "category-chip" + (currentFilter == cat.id ? " active" : "");
+                chip.innerHTML = `${cat.name} <span class="del" onclick="event.stopPropagation(); deleteCategory(${cat.id})">×</span>`;
+                chip.onclick = () => filterByCategory(cat.id);
+                bar.appendChild(chip);
+            });
+        }
+
+        function renderCategorySelect() {
+            const select = document.getElementById("taskCategory");
+            select.innerHTML = '<option value="">Без категории</option>';
+            allCategories.forEach(cat => {
+                const opt = document.createElement("option");
+                opt.value = cat.id;
+                opt.textContent = cat.name;
+                select.appendChild(opt);
+            });
+        }
+
+        async function addCategory() {
+            const input = document.getElementById("categoryInput");
+            const name = input.value.trim();
+            if (!name) return;
+
+            await apiRequest("/categories", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({name})
+            });
+            input.value = "";
+            await loadCategories();
+        }
+
+        async function deleteCategory(id) {
+            if (!confirm("Удалить категорию? Задачи в ней тоже удалятся.")) return;
+            await apiRequest("/categories/" + id, {method: "DELETE"});
+            if (currentFilter == id) currentFilter = "all";
+            await loadAll();
+        }
+
+        function filterByCategory(id) {
+            currentFilter = id;
+            renderCategoriesBar();
+            renderTasks();
+        }
+
         // ===== ЗАДАЧИ =====
         async function loadTasks() {
-            try {
-                const data = await apiRequest("/tasks");
-                const tasksDiv = document.getElementById("tasks");
-                tasksDiv.innerHTML = "";
+            const data = await apiRequest("/tasks");
+            allTasks = data.tasks;
+            renderTasks();
+        }
 
-                if (data.tasks.length === 0) {
-                    tasksDiv.innerHTML = "<p>Пока нет задач. Добавь первую!</p>";
-                    return;
-                }
+        function renderTasks() {
+            const tasksDiv = document.getElementById("tasks");
+            tasksDiv.innerHTML = "";
 
-                data.tasks.forEach(task => {
-                    const div = document.createElement("div");
-                    div.className = "task" + (task.done ? " done" : "");
-                    div.innerHTML = `
-                        <span>${task.title}</span>
-                        <div>
-                            <button class="done-btn" onclick="toggleTask(${task.id}, ${task.done})">
-                                ${task.done ? "↩️" : "✅"}
-                            </button>
-                            <button class="danger" onclick="deleteTask(${task.id})">🗑️</button>
-                        </div>
-                    `;
-                    tasksDiv.appendChild(div);
-                });
-            } catch (e) {
-                console.error(e);
+            let filtered = allTasks;
+            if (currentFilter !== "all") {
+                filtered = allTasks.filter(t => t.category_id == currentFilter);
             }
+
+            if (filtered.length === 0) {
+                tasksDiv.innerHTML = "<div class='card'><p>Нет задач. Добавь первую!</p></div>";
+                return;
+            }
+
+            filtered.forEach(task => {
+                const cat = allCategories.find(c => c.id === task.category_id);
+                const catLabel = cat ? `<span class="task-category">${cat.name}</span>` : "";
+                
+                const div = document.createElement("div");
+                div.className = "task" + (task.done ? " done" : "");
+                div.innerHTML = `
+                    <span>${task.title}${catLabel}</span>
+                    <div>
+                        <button class="done-btn" onclick="toggleTask(${task.id}, ${task.done})">
+                            ${task.done ? "↩️" : "✅"}
+                        </button>
+                        <button class="danger" onclick="deleteTask(${task.id})">🗑️</button>
+                    </div>
+                `;
+                tasksDiv.appendChild(div);
+            });
         }
 
         async function addTask() {
             const input = document.getElementById("taskInput");
+            const select = document.getElementById("taskCategory");
             const title = input.value.trim();
             if (!title) return;
+
+            const body = { title, description: "" };
+            if (select.value) body.category_id = parseInt(select.value);
 
             await apiRequest("/tasks", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({title: title, description: ""})
+                body: JSON.stringify(body)
             });
-
             input.value = "";
-            loadTasks();
+            await loadTasks();
         }
 
         async function toggleTask(id, currentDone) {
@@ -283,27 +369,28 @@
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({done: !currentDone})
             });
-            loadTasks();
+            await loadTasks();
         }
 
         async function deleteTask(id) {
             await apiRequest("/tasks/" + id, {method: "DELETE"});
-            loadTasks();
+            await loadTasks();
         }
 
         // ===== ИНИЦИАЛИЗАЦИЯ =====
         document.getElementById("taskInput").addEventListener("keypress", function(e) {
             if (e.key === "Enter") addTask();
         });
-
+        document.getElementById("categoryInput").addEventListener("keypress", function(e) {
+            if (e.key === "Enter") addCategory();
+        });
         document.getElementById("passwordInput").addEventListener("keypress", function(e) {
             if (e.key === "Enter") login();
         });
 
-        // При загрузке страницы: если токен есть — сразу к задачам
         if (getToken()) {
             showTasksScreen();
-            loadTasks();
+            loadAll();
         }
     </script>
 </body>

@@ -111,6 +111,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     finally:
         db.close()
 
+
 # --- Эндпоинты: Регистрация и вход ---
 
 @app.post("/register")
@@ -190,6 +191,25 @@ def get_category_tasks(category_id: int, current_user: User = Depends(get_curren
         }
     finally:
         db.close()
+
+
+@app.delete("/categories/{category_id}")
+def delete_category(category_id: int, current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    try:
+        category = db.query(Category).filter(
+            Category.id == category_id,
+            Category.owner_id == current_user.id
+        ).first()
+        if not category:
+            raise HTTPException(status_code=404, detail="Категория не найдена")
+        db.delete(category)
+        db.commit()
+        return {"message": f"Категория {category_id} удалена"}
+    finally:
+        db.close()
+
+
 # --- Эндпоинты: Задачи (только для авторизованных) ---
 
 @app.get("/")
