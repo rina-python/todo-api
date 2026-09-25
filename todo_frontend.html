@@ -69,6 +69,17 @@
             border-radius: 10px;
             margin-left: 8px;
         }
+        .task-priority {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: 8px;
+            font-weight: bold;
+        }
+        .priority-1 { background: #e8f5e9; color: #2e7d32; }
+        .priority-2 { background: #fff8e1; color: #f57c00; }
+        .priority-3 { background: #ffebee; color: #c62828; }
+
         .hidden { display: none; }
         .error { color: red; margin-top: 10px; }
         .header {
@@ -140,12 +151,17 @@
         </div>
 
         <!-- Новая задача -->
-        <div class="card">
+       <div class="card">
             <h3>Новая задача</h3>
             <div class="input-group">
                 <input type="text" id="taskInput" placeholder="Что нужно сделать?">
                 <select id="taskCategory">
                     <option value="">Без категории</option>
+                </select>
+                <select id="taskPriority">
+                    <option value="1">🌱 Низкий</option>
+                    <option value="2" selected>⚡ Средний</option>
+                    <option value="3">🔥 Высокий</option>
                 </select>
                 <button onclick="addTask()">Добавить</button>
             </div>
@@ -312,7 +328,7 @@
             renderTasks();
         }
 
-        function renderTasks() {
+       function renderTasks() {
             const tasksDiv = document.getElementById("tasks");
             tasksDiv.innerHTML = "";
 
@@ -326,14 +342,20 @@
                 return;
             }
 
-            filtered.forEach(task => {
+            // Сортируем по приоритету (3 → 2 → 1)
+            const sorted = [...filtered].sort((a, b) => b.priority - a.priority);
+
+            sorted.forEach(task => {
                 const cat = allCategories.find(c => c.id === task.category_id);
                 const catLabel = cat ? `<span class="task-category">${cat.name}</span>` : "";
+                
+                const priorities = {1: "🌱", 2: "⚡", 3: "🔥"};
+                const priorityLabel = `<span class="task-priority priority-${task.priority}">${priorities[task.priority] || "⚡"}</span>`;
                 
                 const div = document.createElement("div");
                 div.className = "task" + (task.done ? " done" : "");
                 div.innerHTML = `
-                    <span>${task.title}${catLabel}</span>
+                    <span>${task.title}${catLabel}${priorityLabel}</span>
                     <div>
                         <button class="done-btn" onclick="toggleTask(${task.id}, ${task.done})">
                             ${task.done ? "↩️" : "✅"}
@@ -347,12 +369,17 @@
 
         async function addTask() {
             const input = document.getElementById("taskInput");
-            const select = document.getElementById("taskCategory");
+            const selectCat = document.getElementById("taskCategory");
+            const selectPriority = document.getElementById("taskPriority");
             const title = input.value.trim();
             if (!title) return;
 
-            const body = { title, description: "" };
-            if (select.value) body.category_id = parseInt(select.value);
+            const body = { 
+                title, 
+                description: "",
+                priority: parseInt(selectPriority.value)
+            };
+            if (selectCat.value) body.category_id = parseInt(selectCat.value);
 
             await apiRequest("/tasks", {
                 method: "POST",

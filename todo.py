@@ -43,12 +43,16 @@ class Task(Base):
     title = Column(String, nullable=False)
     description = Column(String, default="")
     done = Column(Boolean, default=False)
+    priority = Column(Integer, default=2)  # ← НОВОЕ: 1=низкий, 2=средний, 3=высокий
     owner_id = Column(Integer, ForeignKey("users.id"))          # ← владелец
     category_id = Column(Integer, ForeignKey("categories.id"))  # ← категория
     
     # Связи:
     owner = relationship("User", back_populates="tasks")
     category = relationship("Category", back_populates="tasks")
+
+   
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -64,14 +68,16 @@ class UserLogin(BaseModel):
 class TaskCreate(BaseModel):
     title: str
     description: str = ""
-    category_id: int = None  # ← НОВОЕ поле (необязательное)
-
+    category_id: int = None
+    priority: int = 2  # ← НОВОЕ
 
 class TaskUpdate(BaseModel):
     title: str = None
     description: str = None
     done: bool = None
-    category_id: int = None  # ← НОВОЕ поле
+    category_id: int = None
+    priority: int = None  # ← НОВОЕ
+
 class CategoryCreate(BaseModel):
     name: str
 
@@ -220,19 +226,19 @@ def root():
 def get_tasks(current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
-        tasks = db.query(Task).filter(Task.owner_id == current_user.id).all()
+        tasks = db.query(Task).filter(Task.owner_id == current_user.id).order_by(Task.priority.desc()).all()
         return {"tasks": [
             {
                 "id": t.id,
                 "title": t.title,
                 "description": t.description,
                 "done": t.done,
-                "category_id": t.category_id  # ← НОВОЕ
+                "category_id": t.category_id,
+                "priority": t.priority  # ← НОВОЕ
             } for t in tasks
         ]}
     finally:
         db.close()
-
 
 @app.post("/tasks")
 def create_task(task: TaskCreate, current_user: User = Depends(get_current_user)):
@@ -242,7 +248,8 @@ def create_task(task: TaskCreate, current_user: User = Depends(get_current_user)
             title=task.title,
             description=task.description,
             owner_id=current_user.id,
-            category_id=task.category_id  # ← НОВОЕ
+            category_id=task.category_id,
+            priority=task.priority  # ← НОВОЕ
         )
         db.add(new_task)
         db.commit()
@@ -251,7 +258,8 @@ def create_task(task: TaskCreate, current_user: User = Depends(get_current_user)
             "id": new_task.id,
             "title": new_task.title,
             "done": new_task.done,
-            "category_id": new_task.category_id
+            "category_id": new_task.category_id,
+            "priority": new_task.priority  # ← НОВОЕ
         }
     finally:
         db.close()
@@ -269,10 +277,18 @@ def update_task(task_id: int, task: TaskUpdate, current_user: User = Depends(get
             db_task.description = task.description
         if task.done is not None:
             db_task.done = task.done
-        if task.category_id is not None:       # ← НОВОЕ
+        if task.category_id is not None:
             db_task.category_id = task.category_id
+        if task.priority is not None:  # ← НОВОЕ
+            db_task.priority = task.priority
         db.commit()
-        return {"id": db_task.id, "title": db_task.title, "done": db_task.done, "category_id": db_task.category_id}
+        return {
+            "id": db_task.id,
+            "title": db_task.title,
+            "done": db_task.done,
+            "category_id": db_task.category_id,
+            "priority": db_task.priority  # ← НОВОЕ
+        }
     finally:
         db.close()
 
